@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   postgres:
@@ -13,10 +11,10 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      # ✅ Correct data directory (IMPORTANT)
+      # ✅ Correct data directory (CRITICAL)
       - pgdata:/var/lib/postgresql/data
 
-      # ✅ Auto-run SQL on first startup
+      # ✅ Auto-create tables on first run
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
 
     healthcheck:
@@ -25,6 +23,7 @@ services:
       timeout: 5s
       retries: 5
 
+
   kafka:
     image: bitnami/kafka:latest
     container_name: fin_kafka
@@ -32,7 +31,7 @@ services:
     ports:
       - "9092:9092"
     environment:
-      # ✅ KRaft mode (no Zookeeper needed)
+      # ✅ KRaft mode (no Zookeeper)
       - KAFKA_CFG_NODE_ID=0
       - KAFKA_CFG_PROCESS_ROLES=broker,controller
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
@@ -41,14 +40,14 @@ services:
       - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
 
-      # ✅ Required for local dev
+      # ✅ Local dev setting
       - ALLOW_PLAINTEXT_LISTENER=yes
 
-      # ✅ Topic auto creation (optional)
+      # ✅ Auto topic creation (optional)
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
 
     volumes:
-      # ✅ Kafka data persistence
+      # ✅ Kafka persistence
       - kafkadata:/bitnami/kafka
 
     healthcheck:
@@ -56,6 +55,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
 
 volumes:
   pgdata:
