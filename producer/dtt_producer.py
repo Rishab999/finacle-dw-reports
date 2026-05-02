@@ -21,7 +21,7 @@ conn = psycopg2.connect(
     port="2951",
     database="finprd",
     user="MIS_Report",
-    password="************"
+    password="MIS_reaDonly@123"
 )
 cur = conn.cursor()
 
