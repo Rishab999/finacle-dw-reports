@@ -11,12 +11,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      # ✅ Correct data directory (CRITICAL)
       - pgdata:/var/lib/postgresql/data
-
-      # ✅ Auto-create tables on first run
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
-
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -24,39 +20,32 @@ services:
       retries: 5
 
 
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: fin_zookeeper
+    restart: always
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+
   kafka:
-    image: bitnami/kafka:latest
+    image: confluentinc/cp-kafka:7.5.0
     container_name: fin_kafka
     restart: always
+    depends_on:
+      - zookeeper
     ports:
       - "9092:9092"
     environment:
-      # ✅ KRaft mode (no Zookeeper)
-      - KAFKA_CFG_NODE_ID=0
-      - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
 
-      # ✅ Listeners
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
 
-      # ✅ Local dev setting
-      - ALLOW_PLAINTEXT_LISTENER=yes
-
-      # ✅ Auto topic creation (optional)
-      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
-
-    volumes:
-      # ✅ Kafka persistence
-      - kafkadata:/bitnami/kafka
-
-    healthcheck:
-      test: ["CMD", "bash", "-c", "nc -z localhost 9092 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
 
 volumes:
   pgdata:
-  kafkadata:
