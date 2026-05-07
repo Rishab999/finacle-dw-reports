@@ -36,8 +36,8 @@ producer = KafkaProducer(
 # ================= CHECKPOINT =================
 meta_cur.execute("""
     SELECT last_value_date
-    FROM pipeline_metadata
-    WHERE table_name = 'dtt';
+    FROM test_dtt_metadata
+    WHERE table_name = 'test_dtt_transactions';
 """)
 
 row = meta_cur.fetchone()
@@ -48,7 +48,11 @@ else:
     last_value_date = datetime(1970, 1, 1).date()
 
     meta_cur.execute("""
-        INSERT INTO pipeline_metadata (table_name, last_value_date)
+        INSERT INTO test_dtt_metadata (
+    pipeline_name,
+    last_value_date,
+    last_tran_id
+)
         VALUES ('dtt', %s);
     """, (last_value_date,))
     meta_conn.commit()
