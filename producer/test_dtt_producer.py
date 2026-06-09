@@ -46,7 +46,8 @@ meta_cur = meta_conn.cursor()
 meta_cur.execute("""
     SELECT
         last_value_date,
-        last_tran_id
+        last_tran_id,
+        last_part_tran_srl_num
     FROM test_dtt_metadata
     WHERE pipeline_name = 'dtt'
 """)
@@ -56,29 +57,36 @@ row = meta_cur.fetchone()
 if row:
 
     # ✅ FIXED
-    last_value_date, last_tran_id = row
+    last_value_date, last_tran_id , last_part_tran_srl_num = row
 
     if not last_tran_id:
         last_tran_id = '0'
+    
+    if not last_part_tran_srl_num:
+        last-part_tran_srl_num='0'
 
     last_tran_id = str(last_tran_id)
+    last_part_tran_srl_num = str(last_part_tran_srl_num)
 
 else:
 
     last_value_date = datetime(1970, 1, 1)
     last_tran_id = '0'
+    last_part_tran_srl_num='0'
 
     meta_cur.execute("""
         INSERT INTO test_dtt_metadata (
             pipeline_name,
             last_value_date,
-            last_tran_id
+            last_tran_id,
+            last_part_tran_srl_num
         )
-        VALUES (%s, %s, %s)
+        VALUES (%s, %s, %s,%s)
     """, (
         'dtt',
         last_value_date,
-        last_tran_id
+        last_tran_id,
+        last_part_tran_srl_num
     ))
 
     meta_conn.commit()
@@ -90,6 +98,7 @@ query = """
 SELECT
     acid,
     tran_id,
+    part_tran_srl_num,
     tran_date,
     value_date,
     tran_amt,
@@ -105,7 +114,7 @@ WHERE (
         )
       )
 AND value_date >= CURRENT_DATE - INTERVAL '7 days'
-ORDER BY value_date, tran_id
+ORDER BY value_date, tran_id, last_part_tran_srl_num
 """
 
 cur.execute(query, (
@@ -117,6 +126,7 @@ cur.execute(query, (
 total = 0
 max_value_date = last_value_date
 max_tran_id = last_tran_id
+max_part_tran_srl_num = last_part_tran_srl_num
 
 # ================= STREAM DATA =================
 while True:
@@ -128,7 +138,7 @@ while True:
 
     for r in rows:
 
-        value_date = r[3]
+        value_date = r[4]
 
         # ✅ convert datetime to date if needed
         if isinstance(value_date, datetime):
@@ -137,12 +147,13 @@ while True:
         data = {
             "acid": r[0],
             "tran_id": str(r[1]),
-            "tran_date": str(r[2]),
+            "part_tran_srl_num": str(r[2]),
+            "tran_date": str(r[3]),
             "value_date": str(value_date),
-            "tran_amt": float(r[4]) if r[4] else None,
-            "part_tran_type": r[5],
-            "tran_sub_type": r[6],
-            "tran_particulars": r[7]
+            "tran_amt": float(r[5]) if r[5] else None,
+            "part_tran_type": r[6],
+            "tran_sub_type": r[7],
+            "tran_particulars": r[8]
         }
 
         producer.send(
@@ -156,6 +167,7 @@ while True:
         if value_date and value_date > max_value_date:
             max_value_date = value_date
             max_tran_id = str(r[1])
+            max_part_tran_srl_num = str([2])
 
         elif value_date == max_value_date:
 

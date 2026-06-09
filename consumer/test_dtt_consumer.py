@@ -50,6 +50,7 @@ for message in consumer:
         buffer.append((
             data.get("acid"),
             data.get("tran_id"),   # ✅ removed int() to avoid crash
+            data.get("part_tran_srl_num"),
             data.get("tran_date"),
             data.get("value_date"),
             data.get("tran_amt"),
@@ -62,10 +63,11 @@ for message in consumer:
         if len(buffer) >= BATCH_SIZE:
             execute_values(cur, """
                 INSERT INTO test_dtt_transactions (
-                    acid, tran_id, tran_date, value_date, tran_amt,
+                    acid, tran_id, part_tran_srl_num, tran_date, value_date, tran_amt,
                     part_tran_type, tran_sub_type, tran_particulars
                 ) VALUES %s
-                ON CONFLICT (tran_id) DO NOTHING
+                ON CONFLICT (acid,tran_id,part_tran_srl_num,value_date)
+                DO NOTHING
             """, buffer)
 
             conn.commit()
