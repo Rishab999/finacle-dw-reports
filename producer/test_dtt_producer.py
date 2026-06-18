@@ -13,12 +13,10 @@ log("🚀 Starting DTT Producer (FINACLE)...")
 # ================= KAFKA =================
 producer = KafkaProducer(
     bootstrap_servers='localhost:9092',
-    value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
-    linger_ms=10,
-    batch_size=16384
+    value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8')
 )
 
-# ================= SOURCE DB (FINACLE) =================
+# ================= SOURCE DB =================
 conn = psycopg2.connect(
     host="10.60.133.66",
     port="2951",
@@ -27,11 +25,10 @@ conn = psycopg2.connect(
     password="MIS_reaDonly@123"
 )
 
-# ✅ server-side cursor
 cur = conn.cursor(name='dtt_cursor')
 cur.itersize = BATCH_SIZE
 
-# ================= METADATA DB (POSTGRES) =================
+# ================= METADATA DB =================
 meta_conn = psycopg2.connect(
     host="localhost",
     port="5433",
@@ -44,44 +41,37 @@ meta_cur = meta_conn.cursor()
 
 # ================= GET CHECKPOINT =================
 meta_cur.execute("""
-    SELECT
-        last_value_date,
-        last_tran_id,
-        last_part_tran_srl_num
-    FROM test_dtt_metadata
-    WHERE pipeline_name = 'dtt'
+SELECT
+    last_value_date,
+    last_tran_id,
+    last_part_tran_srl_num
+FROM test_dtt_metadata
+WHERE pipeline_name = 'dtt'
 """)
 
 row = meta_cur.fetchone()
 
 if row:
 
-    # ✅ FIXED
-    last_value_date, last_tran_id , last_part_tran_srl_num = row
+    last_value_date, last_tran_id, last_part_tran_srl_num = row
 
-    if not last_tran_id:
-        last_tran_id = '0'
-    
-    if not last_part_tran_srl_num:
-        last-part_tran_srl_num='0'
-
-    last_tran_id = str(last_tran_id)
-    last_part_tran_srl_num = str(last_part_tran_srl_num)
+    last_tran_id = str(last_tran_id or '0')
+    last_part_tran_srl_num = str(last_part_tran_srl_num or '0')
 
 else:
 
-    last_value_date = datetime(1970, 1, 1)
+    last_value_date = datetime(1970, 1, 1).date()
     last_tran_id = '0'
-    last_part_tran_srl_num='0'
+    last_part_tran_srl_num = '0'
 
     meta_cur.execute("""
-        INSERT INTO test_dtt_metadata (
+        INSERT INTO test_dtt_metadata(
             pipeline_name,
             last_value_date,
             last_tran_id,
             last_part_tran_srl_num
         )
-        VALUES (%s, %s, %s,%s)
+        VALUES (%s,%s,%s,%s)
     """, (
         'dtt',
         last_value_date,
@@ -91,9 +81,12 @@ else:
 
     meta_conn.commit()
 
-log(f"🚀 Starting from ({last_value_date}, {last_tran_id})")
+log(
+    f"🚀 Starting from "
+    f"({last_value_date}, {last_tran_id}, {last_part_tran_srl_num})"
+)
 
-# ================= MAIN QUERY =================
+# ================= QUERY =================
 query = """
 SELECT
     acid,
@@ -106,29 +99,22 @@ SELECT
     tran_sub_type,
     tran_particulars
 FROM tbaadm.dtt
-WHERE (
-        value_date > %s
-        OR (
-            value_date = %s
-            AND tran_id > %s
-        )
-      )
-AND value_date >= CURRENT_DATE - INTERVAL '7 days'
-ORDER BY value_date, tran_id, last_part_tran_srl_num
+WHERE value_date >= CURRENT_DATE - INTERVAL '7 days'
+ORDER BY
+    value_date,
+    tran_id,
+    part_tran_srl_num
 """
 
-cur.execute(query, (
-    last_value_date,
-    last_value_date,
-    last_tran_id
-))
+cur.execute(query)
 
 total = 0
+
 max_value_date = last_value_date
 max_tran_id = last_tran_id
 max_part_tran_srl_num = last_part_tran_srl_num
 
-# ================= STREAM DATA =================
+# ================= STREAM =================
 while True:
 
     rows = cur.fetchmany(BATCH_SIZE)
@@ -140,7 +126,6 @@ while True:
 
         value_date = r[4]
 
-        # ✅ convert datetime to date if needed
         if isinstance(value_date, datetime):
             value_date = value_date.date()
 
@@ -163,38 +148,34 @@ while True:
 
         total += 1
 
-        # ================= UPDATE CHECKPOINT =================
-        if value_date and value_date > max_value_date:
-            max_value_date = value_date
-            max_tran_id = str(r[1])
-            max_part_tran_srl_num = str([2])
-
-        elif value_date == max_value_date:
-
-            if str(r[1]) > str(max_tran_id):
-                max_tran_id = str(r[1])
+        max_value_date = value_date
+        max_tran_id = str(r[1])
+        max_part_tran_srl_num = str(r[2])
 
     producer.flush()
 
-    # ================= SAVE METADATA =================
     meta_cur.execute("""
         UPDATE test_dtt_metadata
         SET
             last_value_date = %s,
-            last_tran_id = %s
+            last_tran_id = %s,
+            last_part_tran_srl_num = %s
         WHERE pipeline_name = 'dtt'
     """, (
         max_value_date,
-        max_tran_id
+        max_tran_id,
+        max_part_tran_srl_num
     ))
 
     meta_conn.commit()
 
-    log(f"📤 Sent {total} records | checkpoint = ({max_value_date}, {max_tran_id})")
+    log(
+        f"📤 Sent {total} records | checkpoint = "
+        f"({max_value_date}, {max_tran_id}, {max_part_tran_srl_num})"
+    )
 
 log(f"✅ Producer completed successfully | Total sent = {total}")
 
-# ================= CLEANUP =================
 cur.close()
 meta_cur.close()
 
